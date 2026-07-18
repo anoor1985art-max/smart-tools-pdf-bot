@@ -31,7 +31,7 @@ def call_gemini_ai(prompt, system_instruction="أنت مستشار وخبيرة 
     if not key:
         return "⚠️ <b>تنبيه: محرك الذكاء الاصطناعي يحتاج إلى مفتاح Gemini API!</b>\n\n🔑 يرجى إدخال مفتاحك في البوت مباشرة عبر إرسال الأمر التالي:\n`/set_gemini_key AIzaSy...`\n\n<i>(يمكنك الحصول على المفتاح مجاناً في 10 ثوانٍ من موقع Google AI Studio الرسمية: aistudio.google.com/app/apikey)</i>"
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": f"{system_instruction}\n\n{prompt}"}]}],
