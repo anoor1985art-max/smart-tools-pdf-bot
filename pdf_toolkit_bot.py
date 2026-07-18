@@ -145,6 +145,18 @@ def get_smart_actions_for_media(media_path, media_type):
     )
     return markup
 
+def process_media_to_qr_flow(chat_id, local_path, status_msg):
+    import qr_tools
+    bot.edit_message_text("⏳ <b>جاري رفع المقطع إلى السحابة السريعة وتوليد باركود QR دائم للمشاهدة المباشرة...</b> 🚀🔳", chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML")
+    try:
+        out_qr = os.path.join(WORK_DIR, f"qr_media_{uuid.uuid4().hex[:6]}.png")
+        _, cloud_url = qr_tools.convert_media_to_qr(local_path, out_qr)
+        bot.delete_message(chat_id, status_msg.message_id)
+        with open(out_qr, "rb") as f:
+            bot.send_photo(chat_id, f, caption=f"✅ <b>تم تحويل المقطع/الصورة إلى باركود QR دائم للمشاركة السريعة بنجاح!</b> 🎬🔳✨\n\n🌐 <b>الرابط المباشر الدائم للمشاهدة/الاستماع:</b>\n`{cloud_url}`\n\n⚡ <i>بمسح هذا الرمز بكاميرا أي هاتف في العالم، سيتم فتح وتشغيل المقطع أو الصورة فوراً في متصفحه!</i>", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+    except Exception as e:
+        bot.edit_message_text(f"❌ خطأ أثناء إنشاء باركود الـ QR للمقطع: {e}", chat_id=chat_id, message_id=status_msg.message_id)
+
 if bot:
     @bot.message_handler(commands=["start", "help"])
     def send_welcome(message):
@@ -160,17 +172,15 @@ if bot:
         )
         bot.send_message(chat_id, welcome_txt, parse_mode="HTML", reply_markup=get_main_menu_markup())
 
-def process_media_to_qr_flow(chat_id, local_path, status_msg):
-    import qr_tools
-    bot.edit_message_text("⏳ <b>جاري رفع المقطع إلى السحابة السريعة وتوليد باركود QR دائم للمشاهدة المباشرة...</b> 🚀🔳", chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML")
-    try:
-        out_qr = os.path.join(WORK_DIR, f"qr_media_{uuid.uuid4().hex[:6]}.png")
-        _, cloud_url = qr_tools.convert_media_to_qr(local_path, out_qr)
-        bot.delete_message(chat_id, status_msg.message_id)
-        with open(out_qr, "rb") as f:
-            bot.send_photo(chat_id, f, caption=f"✅ <b>تم تحويل المقطع/الصورة إلى باركود QR دائم للمشاركة السريعة بنجاح!</b> 🎬🔳✨\n\n🌐 <b>الرابط المباشر الدائم للمشاهدة/الاستماع:</b>\n`{cloud_url}`\n\n⚡ <i>بمسح هذا الرمز بكاميرا أي هاتف في العالم، سيتم فتح وتشغيل المقطع أو الصورة فوراً في متصفحه!</i>", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
-    except Exception as e:
-        bot.edit_message_text(f"❌ خطأ أثناء إنشاء باركود الـ QR للمقطع: {e}", chat_id=chat_id, message_id=status_msg.message_id)
+    @bot.message_handler(commands=["set_gemini_key"])
+    def handle_set_gemini_key(message):
+        parts = message.text.strip().split(maxsplit=1)
+        if len(parts) < 2 or not parts[1].startswith("AIza"):
+            bot.reply_to(message, "⚠️ <b>صيغة المفتاح غير واضحة!</b>\nيرجى إرسال الأمر متبوعاً بمفتاحك مباشرة، مثال:\n`/set_gemini_key AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXX`\n\n<i>(يمكنك الحصول على المفتاح مجاناً في 10 ثوانٍ من موقع Google AI Studio: https://aistudio.google.com/app/apikey)</i>", parse_mode="HTML")
+            return
+        import pdf_ai_studio as ai_engine
+        ai_engine.set_local_gemini_key(parts[1])
+        bot.reply_to(message, "✅ <b>تم حفظ وتفعيل مفتاح Gemini API بنجاح!</b> 🧠✨\n\n🎯 أصبحت الآن جميع أدوات الذكاء الاصطناعي في البوت جاهزة ومفعلة بنسبة 100%:\n• ⚖️ التدقيق القانوني وتحليل العقود والاتفاقيات\n• 💡 التلخيص الذكي الشامل الفوري\n• 🗣️ محاورة وسؤال المستند Q&A\n• ✨ التدقيق اللغوي وإعادة الصياغة\n• 🌐 الترجمة الفورية للمستندات", parse_mode="HTML")
 
     @bot.message_handler(content_types=["document", "photo", "audio", "voice", "video"])
     def handle_incoming_files(message):

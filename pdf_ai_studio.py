@@ -6,11 +6,30 @@ from gtts import gTTS
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
+def get_gemini_key():
+    key = os.environ.get("GEMINI_API_KEY", GEMINI_API_KEY).strip()
+    if key:
+        return key
+    config_file = os.path.join(os.path.dirname(__file__), "gemini_key.json")
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("api_key", "").strip()
+        except Exception:
+            pass
+    return ""
+
+def set_local_gemini_key(api_key):
+    config_file = os.path.join(os.path.dirname(__file__), "gemini_key.json")
+    with open(config_file, "w", encoding="utf-8") as f:
+        json.dump({"api_key": api_key.strip()}, f)
+
 def call_gemini_ai(prompt, system_instruction="أنت مستشار وخبيرة مستندات ذكية تجيب باللغة العربية الفصحى بدقة."):
     """الاتصال بمحرك Gemini 1.5 الذكي لمعالجة النصوص والمستندات"""
-    key = os.environ.get("GEMINI_API_KEY", GEMINI_API_KEY)
+    key = get_gemini_key()
     if not key:
-        return "⚠️ تنبيه: يرجى إدخال مفتاح GEMINI_API_KEY في إعدادات الخادم لتفعيل الميزات الذكية الكاملة."
+        return "⚠️ <b>تنبيه: محرك الذكاء الاصطناعي يحتاج إلى مفتاح Gemini API!</b>\n\n🔑 يرجى إدخال مفتاحك في البوت مباشرة عبر إرسال الأمر التالي:\n`/set_gemini_key AIzaSy...`\n\n<i>(يمكنك الحصول على المفتاح مجاناً في 10 ثوانٍ من موقع Google AI Studio الرسمية: aistudio.google.com/app/apikey)</i>"
         
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
     headers = {"Content-Type": "application/json"}
