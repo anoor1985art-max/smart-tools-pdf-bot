@@ -9,3 +9,6 @@ openpyxl==3.1.5
 python-docx==1.1.2
 fpdf2==2.8.2
 gtts==2.5.4
+qrcode[pil]==8.2
+opencv-python-headless==4.13.0.92
+pyzbar==0.1.9

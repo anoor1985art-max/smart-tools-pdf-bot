@@ -94,6 +94,15 @@ def get_main_menu_markup():
     markup.add(types.InlineKeyboardButton("🔧 إصلاح ملف PDF تالف", callback_data="tool_repair"))
     markup.add(types.InlineKeyboardButton("⚖️ مقارنة نسختين وتحديد الفروقات", callback_data="tool_compare"))
     
+    # --- القسم 5: أدوات ومولد الباركود والـ QR الذكي ---
+    markup.add(types.InlineKeyboardButton("━━━ 🔳 أدوات ومولد الباركود والـ QR الذكي ━━━", callback_data="ignore"))
+    markup.add(types.InlineKeyboardButton("📲 إنشاء QR لنص أو رابط أو يوتيوب", callback_data="qr_text_url"))
+    markup.add(types.InlineKeyboardButton("💬 إنشاء QR لواتساب أو اتصال مباشر", callback_data="qr_whatsapp"))
+    markup.add(types.InlineKeyboardButton("📶 إنشاء QR لشبكة واي فاي (WiFi)", callback_data="qr_wifi"))
+    markup.add(types.InlineKeyboardButton("📇 إنشاء QR لبطاقة أعمال (vCard)", callback_data="qr_vcard"))
+    markup.add(types.InlineKeyboardButton("🎨 إنشاء QR ملون ومخصص", callback_data="qr_custom_color"))
+    markup.add(types.InlineKeyboardButton("🔍 قراءة وفك تشفير أي QR أو باركود من صورة", callback_data="qr_decode_action"))
+    
     return markup
 
 def get_smart_actions_for_pdf(pdf_path):
@@ -116,6 +125,7 @@ def get_smart_actions_for_image(img_path):
     """الأزرار السريعة عند إرسال صورة أو عدة صور"""
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
+        types.InlineKeyboardButton("🔍 قراءة وفك تشفير باركود/QR من الصورة", callback_data="qr_decode_img"),
         types.InlineKeyboardButton("📑 تحويل الصورة/الصور إلى مستند PDF وثائقي", callback_data="img_to_pdf_single"),
         types.InlineKeyboardButton("➕ إضافة صورة أخرى لقائمة الدمج في PDF واحد", callback_data="img_add_to_list"),
         types.InlineKeyboardButton("🔍 استخراج النص المكتوب في الصورة (OCR)", callback_data="img_ocr"),
@@ -131,7 +141,7 @@ if bot:
         session["state"] = "idle"
         welcome_txt = (
             "🚀 <b>مرحباً بك في بوت الأدوات الذكية (Smart Tools) ومعمل الـ PDF!</b> 🛠️✨\n\n"
-            "مختبرك الشخصي المتكامل الذي يجمع <b>30 أداة احترافية</b> لمعالجة وتحويل وتنظيم مستنداتك وصورك، مدعوماً بمحركات <b>الذكاء الاصطناعي (Gemini AI)</b> للتلخيص، التدقيق، الترجمة، والتحليل القانوني.\n\n"
+            "مختبرك الشخصي المتكامل الذي يجمع <b>36 أداة احترافية</b> لمعالجة وتحويل وتنظيم مستنداتك وصورك، بالإضافة إلى <b>قسم مولد وقارئ رموز الـ QR والباركود الذكي</b>، ومدعوماً بمحركات <b>الذكاء الاصطناعي (Gemini AI)</b> للتلخيص، التدقيق، الترجمة، والتحليل القانوني.\n\n"
             "🔥 <b>كيف تبدأ؟</b>\n"
             "1️⃣ <b>الوضع التلقائي الأسرع:</b> أرسل لي أي ملف `PDF` أو `صورة` أو مستند `Word/Excel` وسأعرض لك فوراً الأزرار المناسبة له!\n"
             "2️⃣ <b>الوضع اليدوي التصفحي:</b> اختر الأداة التي تريدها من قائمة الأدوات الشاملة أدناه:"
@@ -169,7 +179,19 @@ if bot:
                     reply_markup=get_smart_actions_for_pdf(local_path)
                 )
             elif ext in ["jpg", "jpeg", "png", "webp"]:
-                if session.get("state") == "collecting_images_for_merge":
+                if session.get("state") == "waiting_qr_image_decode":
+                    import qr_tools
+                    bot.edit_message_text("🔍 <b>جاري فحص وقراءة وفك تشفير الباركود من الصورة...</b> ⏳", chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML")
+                    results = qr_tools.decode_qr_from_image(local_path)
+                    if not results:
+                        bot.send_message(chat_id, "❌ <b>لم يتم العثور على أي رمز QR أو باركود واضح في هذه الصورة!</b>\nيرجى التأكد من وضوح الصورة وإرسالها مجدداً، أو اختيار أداة أخرى من القائمة الرئيسية.", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+                    else:
+                        msg_txt = f"🎯 <b>تم استخراج وفك تشفير محتوى الباركود بنجاح ({len(results)} رمز):</b>\n━━━━━━━━━━━━━━━━━━\n"
+                        for idx, item in enumerate(results, 1):
+                            msg_txt += f"<b>{idx}. النوع ({item['type']}):</b>\n<code>{item['data']}</code>\n\n"
+                        bot.send_message(chat_id, msg_txt, parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+                    session["state"] = "idle"
+                elif session.get("state") == "collecting_images_for_merge":
                     session["merge_list"].append(local_path)
                     bot.edit_message_text(
                         f"🖼️ <b>تم إضافة الصورة لرقم ({len(session['merge_list'])}) في قائمة الدمج!</b>\n"
@@ -182,7 +204,7 @@ if bot:
                 else:
                     bot.edit_message_text(
                         f"🖼️ <b>تم استلام الصورة بنجاح!</b> 📸\n"
-                        f"👇 <i>اختر الإجراء المطلوب:</i>",
+                        f"👇 <i>اختر الإجراء المطلوب (تحويل أو قراءة باركود):</i>",
                         chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML",
                         reply_markup=get_smart_actions_for_image(local_path)
                     )
@@ -219,6 +241,7 @@ if bot:
         import pdf_core_tools as core
         import pdf_converters as conv
         import pdf_ai_studio as ai_engine
+        import qr_tools
 
         if data == "ignore":
             bot.answer_callback_query(call.id, "👆 هذا عنوان قسم، اختر إحدى الأدوات الموجودة أسفله مباشرة:")
@@ -231,6 +254,45 @@ if bot:
                 chat_id=chat_id, message_id=call.message.message_id, parse_mode="HTML",
                 reply_markup=get_main_menu_markup()
             )
+            return
+
+        elif data in ["qr_text_url", "qr_whatsapp", "qr_wifi", "qr_vcard", "qr_custom_color", "qr_decode_action"]:
+            bot.answer_callback_query(call.id, "✅ تم اختيار أداة الـ QR بنجاح!")
+            if data == "qr_text_url":
+                session["state"] = "waiting_qr_text_url"
+                bot.send_message(chat_id, "📌 <b>إنشاء باركود QR لنص، رابط موقع، أو يوتيوب:</b>\n\n✏️ أرسل الآن أي نص، ملاحظة، رابط موقع، رابط فيديو اليوتيوب، أو مقطع ليتم تحويله فوراً إلى باركود QR عالي الدقة:", parse_mode="HTML")
+            elif data == "qr_whatsapp":
+                session["state"] = "waiting_qr_whatsapp"
+                bot.send_message(chat_id, "💬 <b>إنشاء باركود QR لمحادثة واتساب أو هاتف:</b>\n\n📱 أرسل رقم الهاتف أو الواتساب (مثلاً `966501234567` أو `0501234567`) ومعه أي رسالة اختيارية، مثلاً:\n`966501234567, مرحباً أريد الاستفسار عن الخدمة`", parse_mode="HTML")
+            elif data == "qr_wifi":
+                session["state"] = "waiting_qr_wifi"
+                bot.send_message(chat_id, "📶 <b>إنشاء باركود QR للاتصال السريع بالواي فاي (WiFi):</b>\n\n📡 أرسل اسم الشبكة وكلمة السر مفصولين بفاصلة، مثلاً:\n`MyHomeWiFi, 12345678`\n\n<i>(بمجرد مسح هذا الباركود بكاميرا الهاتف، سيتصل بالشبكة تلقائياً دون كتابة كلمة السر!)</i>", parse_mode="HTML")
+            elif data == "qr_vcard":
+                session["state"] = "waiting_qr_vcard"
+                bot.send_message(chat_id, "📇 <b>إنشاء باركود QR لبطاقة أعمال (vCard):</b>\n\n👤 أرسل الاسم ورقم الهاتف والإيميل مفصولين بفاصلة، مثلاً:\n`أحمد نور, 0501234567, ahmed@example.com`\n\n<i>(عند مسح الباركود، سيظهر خيار حفظ جهة الاتصال في سجل الهاتف مباشرة!)</i>", parse_mode="HTML")
+            elif data == "qr_custom_color":
+                session["state"] = "waiting_qr_custom_color"
+                bot.send_message(chat_id, "🎨 <b>إنشاء باركود QR ملون ومخصص:</b>\n\n🌈 أرسل الرابط أو النص متبوعاً باسم اللون بالإنجليزي (مثلاً `blue`, `red`, `green`, `purple`, `gold`):\n`https://google.com, blue`", parse_mode="HTML")
+            elif data == "qr_decode_action":
+                session["state"] = "waiting_qr_image_decode"
+                bot.send_message(chat_id, "🔍 <b>قراءة وفك تشفير أي رمز باركود أو QR من صورة:</b>\n\n📸 أرسل الآن صورة الـ QR أو الباركود لنقوم بمسحها وقراءتها واستخراج ما بداخلها حالاً:", parse_mode="HTML")
+            return
+
+        elif data == "qr_decode_img":
+            if not session.get("active_file") or not os.path.exists(session["active_file"]):
+                bot.answer_callback_query(call.id, "❌ يرجى إرسال الصورة أولاً!")
+                return
+            bot.answer_callback_query(call.id, "🔍 جاري قراءة وفك تشفير الباركود...")
+            status = bot.send_message(chat_id, "⏳ <b>جاري فحص وقراءة وفك تشفير الباركود والـ QR الموجود في الصورة...</b> 🔍", parse_mode="HTML")
+            results = qr_tools.decode_qr_from_image(session["active_file"])
+            bot.delete_message(chat_id, status.message_id)
+            if not results:
+                bot.send_message(chat_id, "❌ <b>لم يتم العثور على أي باركود أو رمز QR واضح في هذه الصورة!</b>\nيرجى التأكد من وضوح الرمز وإرسال الصورة مجدداً.", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            else:
+                msg_txt = f"🎯 <b>تم استخراج محتوى الباركود بنجاح ({len(results)} رمز):</b>\n━━━━━━━━━━━━━━━━━━\n"
+                for idx, item in enumerate(results, 1):
+                    msg_txt += f"<b>{idx}. ({item['type']}):</b>\n<code>{item['data']}</code>\n\n"
+                bot.send_message(chat_id, msg_txt, parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
             return
 
         elif data.startswith("tool_"):
@@ -376,6 +438,78 @@ if bot:
                 reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 العودة لأدوات الملف", callback_data="show_active_options"))
             )
             return
+
+        import qr_tools
+
+        if session.get("state") == "waiting_qr_text_url":
+            status = bot.send_message(chat_id, "⏳ <b>جاري رسم وإنشاء باركود الـ QR...</b> 🔳", parse_mode="HTML")
+            out_path = os.path.join(WORK_DIR, f"qr_{uuid.uuid4().hex[:6]}.png")
+            qr_tools.generate_qr_code(text, out_path)
+            bot.delete_message(chat_id, status.message_id)
+            with open(out_path, "rb") as f:
+                bot.send_photo(chat_id, f, caption=f"✅ <b>تم إنشاء رمز الـ QR بنجاح!</b> 🔳✨\n\n📝 <b>المحتوى:</b>\n`{text}`", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            session["state"] = "idle"
+            return
+
+        elif session.get("state") == "waiting_qr_whatsapp":
+            status = bot.send_message(chat_id, "⏳ <b>جاري إنشاء باركود الواتساب...</b> 🔳", parse_mode="HTML")
+            parts = [p.strip() for p in text.split(",", 1)]
+            phone = parts[0]
+            msg = parts[1] if len(parts) > 1 else ""
+            url = qr_tools.create_whatsapp_data(phone, msg)
+            out_path = os.path.join(WORK_DIR, f"qr_wa_{uuid.uuid4().hex[:6]}.png")
+            qr_tools.generate_qr_code(url, out_path)
+            bot.delete_message(chat_id, status.message_id)
+            with open(out_path, "rb") as f:
+                bot.send_photo(chat_id, f, caption=f"✅ <b>تم إنشاء باركود الواتساب المباشر بنجاح!</b> 💬✨\n\n📱 <b>الرقم:</b> `{phone}`\n🌐 <b>الرابط المباشر:</b>\n`{url}`", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            session["state"] = "idle"
+            return
+
+        elif session.get("state") == "waiting_qr_wifi":
+            status = bot.send_message(chat_id, "⏳ <b>جاري إنشاء باركود الواي فاي (WiFi QR)...</b> 🔳", parse_mode="HTML")
+            parts = [p.strip() for p in text.split(",", 1)]
+            ssid = parts[0]
+            pwd = parts[1] if len(parts) > 1 else ""
+            wifi_data = qr_tools.create_wifi_data(ssid, pwd)
+            out_path = os.path.join(WORK_DIR, f"qr_wifi_{uuid.uuid4().hex[:6]}.png")
+            qr_tools.generate_qr_code(wifi_data, out_path)
+            bot.delete_message(chat_id, status.message_id)
+            with open(out_path, "rb") as f:
+                bot.send_photo(chat_id, f, caption=f"✅ <b>تم إنشاء باركود الاتصال السريع بالواي فاي بنجاح!</b> 📶✨\n\n📡 <b>اسم الشبكة:</b> `{ssid}`\n🔑 <i>بمسح الرمز سيتصل الهاتف بالشبكة حالاً دون كتابة كلمة السر!</i>", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            session["state"] = "idle"
+            return
+
+        elif session.get("state") == "waiting_qr_vcard":
+            status = bot.send_message(chat_id, "⏳ <b>جاري إنشاء بطاقة الأعمال الرقمية (vCard QR)...</b> 🔳", parse_mode="HTML")
+            parts = [p.strip() for p in text.split(",")]
+            name = parts[0]
+            phone = parts[1] if len(parts) > 1 else ""
+            email = parts[2] if len(parts) > 2 else ""
+            vcard_data = qr_tools.create_vcard_data(name, phone, email)
+            out_path = os.path.join(WORK_DIR, f"qr_vcard_{uuid.uuid4().hex[:6]}.png")
+            qr_tools.generate_qr_code(vcard_data, out_path)
+            bot.delete_message(chat_id, status.message_id)
+            with open(out_path, "rb") as f:
+                bot.send_photo(chat_id, f, caption=f"✅ <b>تم إنشاء بطاقة الأعمال الرقمية (vCard) بنجاح!</b> 📇✨\n\n👤 <b>الاسم:</b> {name}\n📱 <b>الهاتف:</b> `{phone}`\n<i>بمسح الرمز سيظهر خيار حفظ جهة الاتصال بالهاتف فوراً!</i>", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            session["state"] = "idle"
+            return
+
+        elif session.get("state") == "waiting_qr_custom_color":
+            status = bot.send_message(chat_id, "⏳ <b>جاري إنشاء باركود الـ QR الملون...</b> 🎨🔳", parse_mode="HTML")
+            parts = [p.strip() for p in text.rsplit(",", 1)]
+            content_data = parts[0]
+            color_name = parts[1].lower() if len(parts) > 1 and parts[1] else "blue"
+            out_path = os.path.join(WORK_DIR, f"qr_color_{uuid.uuid4().hex[:6]}.png")
+            try:
+                qr_tools.generate_qr_code(content_data, out_path, fill_color=color_name, back_color="white")
+            except Exception:
+                qr_tools.generate_qr_code(content_data, out_path, fill_color="black", back_color="white")
+            bot.delete_message(chat_id, status.message_id)
+            with open(out_path, "rb") as f:
+                bot.send_photo(chat_id, f, caption=f"✅ <b>تم إنشاء باركود الـ QR باللون ({color_name}) بنجاح!</b> 🎨✨\n\n📝 <b>المحتوى:</b>\n`{content_data}`", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            session["state"] = "idle"
+            return
+
 
 def run_polling():
     if not bot:
