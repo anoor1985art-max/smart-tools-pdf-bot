@@ -134,8 +134,46 @@ def decode_qr_from_image(image_path):
                             if b_data and b_data.strip() and b_data.strip() not in seen_data:
                                 b_type = decoded_type[idx] if idx < len(decoded_type) else "Barcode"
                                 seen_data.add(b_data.strip())
-                                results.append({"type": str(b_type), "data": b_data.strip()})
         except Exception as e:
             print(f"[OpenCV decode error]: {e}")
 
     return results
+
+
+def upload_file_to_cloud(file_path):
+    """
+    رفع أي ملف (صورة، صوت، فيديو، مستند) إلى سحابة Catbox السريعة
+    وإرجاع رابط مباشر دائم يمكن تضمينه في باركود QR. إذا فشل الرفع السحابي،
+    يتم تقديم الرابط مباشرة من خادم Render المحلي.
+    """
+    import requests
+    try:
+        # المحاولة الأولى: Catbox.moe للروابط الدائمة السريعة
+        with open(file_path, 'rb') as f:
+            resp = requests.post(
+                'https://catbox.moe/user/api.php',
+                data={'reqtype': 'fileupload'},
+                files={'fileToUpload': f},
+                timeout=45
+            )
+        if resp.status_code == 200 and resp.text.startswith('http'):
+            return resp.text.strip()
+    except Exception as e:
+        print(f"[Catbox upload error]: {e}")
+
+    # الخيار الاحتياطي الذكي: تقديم الرابط من سيرفرنا على Render
+    filename = os.path.basename(file_path)
+    return f"https://smart-tools-pdf-bot.onrender.com/media/{filename}"
+
+
+def convert_media_to_qr(file_path, output_qr_path, fill_color="black"):
+    """
+    رفع الملف الصوتي أو الفيديو أو الصورة للسحابة وإنشاء باركود QR للرابط المباشر للمشاهدة/الاستماع فوراً
+    """
+    cloud_url = upload_file_to_cloud(file_path)
+    if not cloud_url:
+        raise Exception("فشل في رفع الملف إلى السحابة لتوليد الرابط المباشر.")
+    
+    generate_qr_code(cloud_url, output_qr_path, fill_color=fill_color)
+    return output_qr_path, cloud_url
+

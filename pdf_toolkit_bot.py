@@ -101,6 +101,7 @@ def get_main_menu_markup():
     markup.add(types.InlineKeyboardButton("📶 إنشاء QR لشبكة واي فاي (WiFi)", callback_data="qr_wifi"))
     markup.add(types.InlineKeyboardButton("📇 إنشاء QR لبطاقة أعمال (vCard)", callback_data="qr_vcard"))
     markup.add(types.InlineKeyboardButton("🎨 إنشاء QR ملون ومخصص", callback_data="qr_custom_color"))
+    markup.add(types.InlineKeyboardButton("🎬 تحويل ملف (صورة، صوت، أو فيديو) إلى QR دائم", callback_data="qr_media_file"))
     markup.add(types.InlineKeyboardButton("🔍 قراءة وفك تشفير أي QR أو باركود من صورة", callback_data="qr_decode_action"))
     
     return markup
@@ -126,9 +127,20 @@ def get_smart_actions_for_image(img_path):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("🔍 قراءة وفك تشفير باركود/QR من الصورة", callback_data="qr_decode_img"),
+        types.InlineKeyboardButton("🔳 تحويل الصورة إلى باركود QR دائم (QR Link)", callback_data="qr_convert_active_media"),
         types.InlineKeyboardButton("📑 تحويل الصورة/الصور إلى مستند PDF وثائقي", callback_data="img_to_pdf_single"),
         types.InlineKeyboardButton("➕ إضافة صورة أخرى لقائمة الدمج في PDF واحد", callback_data="img_add_to_list"),
         types.InlineKeyboardButton("🔍 استخراج النص المكتوب في الصورة (OCR)", callback_data="img_ocr"),
+        types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")
+    )
+    return markup
+
+def get_smart_actions_for_media(media_path, media_type):
+    """الأزرار السريعة عند إرسال مقطع صوتي أو فيديو"""
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    type_name = "الصوتي" if media_type in ["audio", "voice"] else "المرئي (الفيديو)"
+    markup.add(
+        types.InlineKeyboardButton(f"🔳 تحويل المقطع {type_name} إلى باركود QR دائم للمشاركة", callback_data="qr_convert_active_media"),
         types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")
     )
     return markup
@@ -148,7 +160,19 @@ if bot:
         )
         bot.send_message(chat_id, welcome_txt, parse_mode="HTML", reply_markup=get_main_menu_markup())
 
-    @bot.message_handler(content_types=["document", "photo"])
+def process_media_to_qr_flow(chat_id, local_path, status_msg):
+    import qr_tools
+    bot.edit_message_text("⏳ <b>جاري رفع المقطع إلى السحابة السريعة وتوليد باركود QR دائم للمشاهدة المباشرة...</b> 🚀🔳", chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML")
+    try:
+        out_qr = os.path.join(WORK_DIR, f"qr_media_{uuid.uuid4().hex[:6]}.png")
+        _, cloud_url = qr_tools.convert_media_to_qr(local_path, out_qr)
+        bot.delete_message(chat_id, status_msg.message_id)
+        with open(out_qr, "rb") as f:
+            bot.send_photo(chat_id, f, caption=f"✅ <b>تم تحويل المقطع/الصورة إلى باركود QR دائم للمشاركة السريعة بنجاح!</b> 🎬🔳✨\n\n🌐 <b>الرابط المباشر الدائم للمشاهدة/الاستماع:</b>\n`{cloud_url}`\n\n⚡ <i>بمسح هذا الرمز بكاميرا أي هاتف في العالم، سيتم فتح وتشغيل المقطع أو الصورة فوراً في متصفحه!</i>", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+    except Exception as e:
+        bot.edit_message_text(f"❌ خطأ أثناء إنشاء باركود الـ QR للمقطع: {e}", chat_id=chat_id, message_id=status_msg.message_id)
+
+    @bot.message_handler(content_types=["document", "photo", "audio", "voice", "video"])
     def handle_incoming_files(message):
         chat_id = message.chat.id
         session = get_user_session(chat_id)
@@ -159,6 +183,15 @@ if bot:
             if message.content_type == "photo":
                 file_info = bot.get_file(message.photo[-1].file_id)
                 ext = "jpg"
+            elif message.content_type == "audio":
+                file_info = bot.get_file(message.audio.file_id)
+                ext = message.audio.file_name.split(".")[-1].lower() if message.audio.file_name and "." in message.audio.file_name else "mp3"
+            elif message.content_type == "voice":
+                file_info = bot.get_file(message.voice.file_id)
+                ext = "ogg"
+            elif message.content_type == "video":
+                file_info = bot.get_file(message.video.file_id)
+                ext = message.video.file_name.split(".")[-1].lower() if message.video.file_name and "." in message.video.file_name else "mp4"
             else:
                 file_info = bot.get_file(message.document.file_id)
                 ext = message.document.file_name.split(".")[-1].lower() if "." in message.document.file_name else "pdf"
@@ -171,7 +204,18 @@ if bot:
                 
             session["active_file"] = local_path
             
-            if ext == "pdf":
+            if message.content_type in ["audio", "voice", "video"]:
+                if session.get("state") == "waiting_qr_media_file":
+                    process_media_to_qr_flow(chat_id, local_path, status_msg)
+                    session["state"] = "idle"
+                else:
+                    bot.edit_message_text(
+                        f"🎬 <b>تم استلام المقطع بنجاح!</b> 🎵\n"
+                        f"👇 <i>اختر الآن الإجراء الذي تريد تنفيذه على هذا المقطع:</i>",
+                        chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML",
+                        reply_markup=get_smart_actions_for_media(local_path, message.content_type)
+                    )
+            elif ext == "pdf":
                 bot.edit_message_text(
                     f"✅ <b>تم استلام مستند الـ PDF بنجاح!</b> 📄\n"
                     f"👇 <i>اختر الآن الإجراء السريع أو الذكي الذي تريد تنفيذه على هذا المستند:</i>",
@@ -179,7 +223,10 @@ if bot:
                     reply_markup=get_smart_actions_for_pdf(local_path)
                 )
             elif ext in ["jpg", "jpeg", "png", "webp"]:
-                if session.get("state") == "waiting_qr_image_decode":
+                if session.get("state") == "waiting_qr_media_file":
+                    process_media_to_qr_flow(chat_id, local_path, status_msg)
+                    session["state"] = "idle"
+                elif session.get("state") == "waiting_qr_image_decode":
                     import qr_tools
                     bot.edit_message_text("🔍 <b>جاري فحص وقراءة وفك تشفير الباركود من الصورة...</b> ⏳", chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML")
                     results = qr_tools.decode_qr_from_image(local_path)
@@ -256,7 +303,7 @@ if bot:
             )
             return
 
-        elif data in ["qr_text_url", "qr_whatsapp", "qr_wifi", "qr_vcard", "qr_custom_color", "qr_decode_action"]:
+        elif data in ["qr_text_url", "qr_whatsapp", "qr_wifi", "qr_vcard", "qr_custom_color", "qr_decode_action", "qr_media_file"]:
             bot.answer_callback_query(call.id, "✅ تم اختيار أداة الـ QR بنجاح!")
             if data == "qr_text_url":
                 session["state"] = "waiting_qr_text_url"
@@ -276,6 +323,9 @@ if bot:
             elif data == "qr_decode_action":
                 session["state"] = "waiting_qr_image_decode"
                 bot.send_message(chat_id, "🔍 <b>قراءة وفك تشفير أي رمز باركود أو QR من صورة:</b>\n\n📸 أرسل الآن صورة الـ QR أو الباركود لنقوم بمسحها وقراءتها واستخراج ما بداخلها حالاً:", parse_mode="HTML")
+            elif data == "qr_media_file":
+                session["state"] = "waiting_qr_media_file"
+                bot.send_message(chat_id, "🎬 <b>تحويل ملف (صورة، مقطع صوت، أو فيديو) إلى باركود QR دائم:</b>\n\n📁 أرسل الآن أي صورة أو مقطع صوتي (MP3/بصمة صوت) أو فيديو، وسيتم رفعه فوراً وإنشاء باركود QR دائم للمشاهدة أو الاستماع المباشر بمسح الكاميرا!", parse_mode="HTML")
             return
 
         elif data == "qr_decode_img":
@@ -293,6 +343,22 @@ if bot:
                 for idx, item in enumerate(results, 1):
                     msg_txt += f"<b>{idx}. ({item['type']}):</b>\n<code>{item['data']}</code>\n\n"
                 bot.send_message(chat_id, msg_txt, parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            return
+
+        elif data == "qr_convert_active_media":
+            if not session.get("active_file") or not os.path.exists(session["active_file"]):
+                bot.answer_callback_query(call.id, "❌ يرجى إرسال المقطع أو الصورة أولاً!")
+                return
+            bot.answer_callback_query(call.id, "🚀 جاري توليد باركود الـ QR الدائم...")
+            status = bot.send_message(chat_id, "⏳ <b>جاري رفع المقطع إلى السحابة وتوليد باركود QR دائم للمشاهدة/الاستماع المباشر...</b> 🚀🔳", parse_mode="HTML")
+            try:
+                out_qr = os.path.join(WORK_DIR, f"qr_media_{uuid.uuid4().hex[:6]}.png")
+                _, cloud_url = qr_tools.convert_media_to_qr(session["active_file"], out_qr)
+                bot.delete_message(chat_id, status.message_id)
+                with open(out_qr, "rb") as f:
+                    bot.send_photo(chat_id, f, caption=f"✅ <b>تم تحويل المقطع/الصورة إلى باركود QR دائم للمشاركة السريعة بنجاح!</b> 🎬🔳✨\n\n🌐 <b>الرابط المباشر الدائم للمشاهدة/الاستماع:</b>\n`{cloud_url}`\n\n⚡ <i>بمسح هذا الرمز بكاميرا أي هاتف في العالم، سيتم فتح وتشغيل المقطع أو الصورة فوراً!</i>", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            except Exception as e:
+                bot.edit_message_text(f"❌ خطأ أثناء إنشاء باركود الـ QR: {e}", chat_id=chat_id, message_id=status.message_id)
             return
 
         elif data.startswith("tool_"):
@@ -526,6 +592,11 @@ def run_polling():
 @app.route("/")
 def index():
     return "🚀 Ultimate PDF Toolkit & AI Studio Bot is online 24/7!"
+
+@app.route("/media/<filename>")
+def serve_media(filename):
+    from flask import send_from_directory
+    return send_from_directory(WORK_DIR, filename)
 
 if __name__ == "__main__":
     cleanup_t = threading.Thread(target=cleanup_temp_daemon, daemon=True)
