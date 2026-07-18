@@ -56,6 +56,8 @@ def get_main_menu_markup():
     """لوحة الأدوات الشاملة: عناوين ثابتة للأقسام وأسفل كل عنوان أدواته مباشرة، وكل زر يأخذ صفاً كاملاً"""
     markup = types.InlineKeyboardMarkup(row_width=1)
     
+    markup.add(types.InlineKeyboardButton("📚 دليل وشرح وظائف جميع الأدوات والـ QR (شامل)", callback_data="open_tools_guide"))
+    
     # --- القسم 1: أدوات الدمج والتقسيم والضغط ---
     markup.add(types.InlineKeyboardButton("━━━ 🧩 أدوات الدمج والتقسيم والتنظيم ━━━", callback_data="ignore"))
     markup.add(types.InlineKeyboardButton("📥 دمج ملفات PDF", callback_data="tool_merge"))
@@ -168,9 +170,20 @@ if bot:
             "مختبرك الشخصي المتكامل الذي يجمع <b>36 أداة احترافية</b> لمعالجة وتحويل وتنظيم مستنداتك وصورك، بالإضافة إلى <b>قسم مولد وقارئ رموز الـ QR والباركود الذكي</b>، ومدعوماً بمحركات <b>الذكاء الاصطناعي (Gemini AI)</b> للتلخيص، التدقيق، الترجمة، والتحليل القانوني.\n\n"
             "🔥 <b>كيف تبدأ؟</b>\n"
             "1️⃣ <b>الوضع التلقائي الأسرع:</b> أرسل لي أي ملف `PDF` أو `صورة` أو مستند `Word/Excel` وسأعرض لك فوراً الأزرار المناسبة له!\n"
-            "2️⃣ <b>الوضع اليدوي التصفحي:</b> اختر الأداة التي تريدها من قائمة الأدوات الشاملة أدناه:"
+            "2️⃣ <b>الوضع اليدوي التصفحي:</b> اختر الأداة التي تريدها من قائمة الأدوات الشاملة أدناه أو اضغط زر الدليل لمعرفة وظيفة كل أداة:"
         )
         bot.send_message(chat_id, welcome_txt, parse_mode="HTML", reply_markup=get_main_menu_markup())
+
+    @bot.message_handler(commands=["tools_guide", "tools", "guide", "desc"])
+    def handle_tools_guide(message):
+        import tools_descriptions as tdesc
+        bot.send_message(
+            message.chat.id,
+            "📚 <b>موسوعة ودليل وظائف جميع أدوات البوت والـ QR (36+ أداة):</b>\n\n"
+            "اختر القسم الذي تريد معرفة تفاصيل وشرح وظائف أدواته من القائمة أدناه:",
+            parse_mode="HTML",
+            reply_markup=tdesc.get_tools_guide_markup()
+        )
 
     @bot.message_handler(commands=["set_gemini_key"])
     def handle_set_gemini_key(message):
@@ -313,29 +326,55 @@ if bot:
             )
             return
 
+        elif data == "open_tools_guide":
+            import tools_descriptions as tdesc
+            bot.edit_message_text(
+                "📚 <b>موسوعة ودليل وظائف جميع أدوات البوت والـ QR (36+ أداة):</b>\n\n"
+                "اختر القسم الذي تريد معرفة تفاصيل وشرح وظائف أدواته من القائمة أدناه:",
+                chat_id=chat_id, message_id=call.message.message_id, parse_mode="HTML",
+                reply_markup=tdesc.get_tools_guide_markup()
+            )
+            return
+
+        elif data.startswith("guide_sec_"):
+            import tools_descriptions as tdesc
+            bot.edit_message_text(
+                tdesc.get_category_guide_text(data),
+                chat_id=chat_id, message_id=call.message.message_id, parse_mode="HTML",
+                reply_markup=tdesc.get_tools_guide_markup()
+            )
+            return
+
         elif data in ["qr_text_url", "qr_whatsapp", "qr_wifi", "qr_vcard", "qr_custom_color", "qr_decode_action", "qr_media_file"]:
-            bot.answer_callback_query(call.id, "✅ تم اختيار أداة الـ QR بنجاح!")
+            import tools_descriptions as tdesc
+            info = tdesc.TOOL_DETAILS.get(data)
+            bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20] if info else 'أداة QR'}...")
             if data == "qr_text_url":
                 session["state"] = "waiting_qr_text_url"
-                bot.send_message(chat_id, "📌 <b>إنشاء باركود QR لنص، رابط موقع، أو يوتيوب:</b>\n\n✏️ أرسل الآن أي نص، ملاحظة، رابط موقع، رابط فيديو اليوتيوب، أو مقطع ليتم تحويله فوراً إلى باركود QR عالي الدقة:", parse_mode="HTML")
             elif data == "qr_whatsapp":
                 session["state"] = "waiting_qr_whatsapp"
-                bot.send_message(chat_id, "💬 <b>إنشاء باركود QR لمحادثة واتساب أو هاتف:</b>\n\n📱 أرسل رقم الهاتف أو الواتساب (مثلاً `966501234567` أو `0501234567`) ومعه أي رسالة اختيارية، مثلاً:\n`966501234567, مرحباً أريد الاستفسار عن الخدمة`", parse_mode="HTML")
             elif data == "qr_wifi":
                 session["state"] = "waiting_qr_wifi"
-                bot.send_message(chat_id, "📶 <b>إنشاء باركود QR للاتصال السريع بالواي فاي (WiFi):</b>\n\n📡 أرسل اسم الشبكة وكلمة السر مفصولين بفاصلة، مثلاً:\n`MyHomeWiFi, 12345678`\n\n<i>(بمجرد مسح هذا الباركود بكاميرا الهاتف، سيتصل بالشبكة تلقائياً دون كتابة كلمة السر!)</i>", parse_mode="HTML")
             elif data == "qr_vcard":
                 session["state"] = "waiting_qr_vcard"
-                bot.send_message(chat_id, "📇 <b>إنشاء باركود QR لبطاقة أعمال (vCard):</b>\n\n👤 أرسل الاسم ورقم الهاتف والإيميل مفصولين بفاصلة، مثلاً:\n`أحمد نور, 0501234567, ahmed@example.com`\n\n<i>(عند مسح الباركود، سيظهر خيار حفظ جهة الاتصال في سجل الهاتف مباشرة!)</i>", parse_mode="HTML")
             elif data == "qr_custom_color":
                 session["state"] = "waiting_qr_custom_color"
-                bot.send_message(chat_id, "🎨 <b>إنشاء باركود QR ملون ومخصص:</b>\n\n🌈 أرسل الرابط أو النص متبوعاً باسم اللون بالإنجليزي (مثلاً `blue`, `red`, `green`, `purple`, `gold`):\n`https://google.com, blue`", parse_mode="HTML")
             elif data == "qr_decode_action":
                 session["state"] = "waiting_qr_image_decode"
-                bot.send_message(chat_id, "🔍 <b>قراءة وفك تشفير أي رمز باركود أو QR من صورة:</b>\n\n📸 أرسل الآن صورة الـ QR أو الباركود لنقوم بمسحها وقراءتها واستخراج ما بداخلها حالاً:", parse_mode="HTML")
             elif data == "qr_media_file":
                 session["state"] = "waiting_qr_media_file"
-                bot.send_message(chat_id, "🎬 <b>تحويل ملف (صورة، مقطع صوت، أو فيديو) إلى باركود QR دائم:</b>\n\n📁 أرسل الآن أي صورة أو مقطع صوتي (MP3/بصمة صوت) أو فيديو، وسيتم رفعه فوراً وإنشاء باركود QR دائم للمشاهدة أو الاستماع المباشر بمسح الكاميرا!", parse_mode="HTML")
+                
+            if info:
+                bot.send_message(
+                    chat_id,
+                    f"🛠️ <b>{info['title']}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"📖 <b>وظيفة الأداة وتفاصيلها:</b>\n"
+                    f"{info['desc']}\n\n"
+                    f"📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n"
+                    f"{info['input_need']}",
+                    parse_mode="HTML"
+                )
             return
 
         elif data == "qr_decode_img":
@@ -375,13 +414,27 @@ if bot:
             # إذا اختار أداة من القائمة الشاملة قبل إرسال الملف
             if not session.get("active_file") or not os.path.exists(session["active_file"]):
                 session["state"] = data
-                bot.answer_callback_query(call.id, "✅ تم اختيار الأداة بنجاح!")
-                bot.send_message(
-                    chat_id,
-                    f"🎯 <b>لقد اخترت الأداة:</b> `{data}`\n\n"
-                    f"📤 <i>أرسل الآن ملف الـ `PDF` أو `الصورة` أو `المستند` المطلوب لنقوم بتنفيذ هذه الأداة عليه فوراً!</i>",
-                    parse_mode="HTML"
-                )
+                import tools_descriptions as tdesc
+                info = tdesc.TOOL_DETAILS.get(data)
+                bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20] if info else data}...")
+                if info:
+                    bot.send_message(
+                        chat_id,
+                        f"🛠️ <b>{info['title']}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━\n\n"
+                        f"📖 <b>وظيفة الأداة وتفاصيلها:</b>\n"
+                        f"{info['desc']}\n\n"
+                        f"📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n"
+                        f"{info['input_need']}",
+                        parse_mode="HTML"
+                    )
+                else:
+                    bot.send_message(
+                        chat_id,
+                        f"🎯 <b>لقد اخترت الأداة:</b> `{data}`\n\n"
+                        f"📤 <i>أرسل الآن ملف الـ `PDF` أو `الصورة` أو `المستند` المطلوب لنقوم بتنفيذ هذه الأداة عليه فوراً!</i>",
+                        parse_mode="HTML"
+                    )
                 return
 
         elif data in ["quick_compress", "tool_compress"]:
@@ -424,7 +477,11 @@ if bot:
 
         elif data == "quick_ai_sum":
             if not session.get("active_file") or not os.path.exists(session["active_file"]):
-                bot.answer_callback_query(call.id, "❌ يرجى إرسال مستند PDF أولاً!")
+                import tools_descriptions as tdesc
+                info = tdesc.TOOL_DETAILS.get("quick_ai_sum")
+                session["state"] = "quick_ai_sum"
+                bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20]}...")
+                bot.send_message(chat_id, f"🛠️ <b>{info['title']}</b>\n━━━━━━━━━━━━━━━━━━\n\n📖 <b>وظيفة الأداة وتفاصيلها:</b>\n{info['desc']}\n\n📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n{info['input_need']}", parse_mode="HTML")
                 return
             bot.answer_callback_query(call.id, "💡 جاري تحليل التلخيص بالذكاء الاصطناعي...")
             status = bot.send_message(chat_id, "🧠 <b>جاري دراسة نصوص المستند وتوليد الملخص المركز عبر الذكاء الاصطناعي...</b> ⏳", parse_mode="HTML")
@@ -443,7 +500,11 @@ if bot:
             summary = session.get("last_summary")
             if not summary:
                 if not session.get("active_file") or not os.path.exists(session["active_file"]):
-                    bot.answer_callback_query(call.id, "❌ يرجى إرسال ملف وتلخيصه أولاً!")
+                    import tools_descriptions as tdesc
+                    info = tdesc.TOOL_DETAILS.get("quick_speech")
+                    session["state"] = "quick_speech"
+                    bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20]}...")
+                    bot.send_message(chat_id, f"🛠️ <b>{info['title']}</b>\n━━━━━━━━━━━━━━━━━━\n\n📖 <b>وظيفة الأداة وتفاصيلها:</b>\n{info['desc']}\n\n📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n{info['input_need']}", parse_mode="HTML")
                     return
                 bot.answer_callback_query(call.id, "⏳ جاري التلخيص أولاً ثم التحويل للصوت...")
                 status = bot.send_message(chat_id, "⏳ <b>جاري إعداد الملخص وتحويله إلى مقطع استماع صوتي فائق الوضوح...</b> 🎧", parse_mode="HTML")
@@ -459,7 +520,11 @@ if bot:
 
         elif data == "quick_ai_qa":
             if not session.get("active_file") or not os.path.exists(session["active_file"]):
-                bot.answer_callback_query(call.id, "❌ يرجى إرسال مستند PDF أولاً!")
+                import tools_descriptions as tdesc
+                info = tdesc.TOOL_DETAILS.get("quick_ai_qa")
+                session["state"] = "quick_ai_qa"
+                bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20]}...")
+                bot.send_message(chat_id, f"🛠️ <b>{info['title']}</b>\n━━━━━━━━━━━━━━━━━━\n\n📖 <b>وظيفة الأداة وتفاصيلها:</b>\n{info['desc']}\n\n📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n{info['input_need']}", parse_mode="HTML")
                 return
             session["state"] = "waiting_pdf_question"
             bot.send_message(
@@ -471,7 +536,11 @@ if bot:
 
         elif data == "quick_ai_audit":
             if not session.get("active_file") or not os.path.exists(session["active_file"]):
-                bot.answer_callback_query(call.id, "❌ يرجى إرسال العقد أو الاتفاقية أولاً!")
+                import tools_descriptions as tdesc
+                info = tdesc.TOOL_DETAILS.get("quick_ai_audit")
+                session["state"] = "quick_ai_audit"
+                bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20]}...")
+                bot.send_message(chat_id, f"🛠️ <b>{info['title']}</b>\n━━━━━━━━━━━━━━━━━━\n\n📖 <b>وظيفة الأداة وتفاصيلها:</b>\n{info['desc']}\n\n📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n{info['input_need']}", parse_mode="HTML")
                 return
             bot.answer_callback_query(call.id, "⚖️ جاري التحليل القانوني الذكي...")
             status = bot.send_message(chat_id, "⚖️ <b>جاري دراسة بنود العقد واكتشاف البنود الحساسة والثغرات (Red Flags)...</b> ⏳", parse_mode="HTML")
@@ -480,7 +549,11 @@ if bot:
 
         elif data == "quick_ai_proof":
             if not session.get("active_file") or not os.path.exists(session["active_file"]):
-                bot.answer_callback_query(call.id, "❌ يرجى إرسال المستند أولاً!")
+                import tools_descriptions as tdesc
+                info = tdesc.TOOL_DETAILS.get("quick_ai_proof")
+                session["state"] = "quick_ai_proof"
+                bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20]}...")
+                bot.send_message(chat_id, f"🛠️ <b>{info['title']}</b>\n━━━━━━━━━━━━━━━━━━\n\n📖 <b>وظيفة الأداة وتفاصيلها:</b>\n{info['desc']}\n\n📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n{info['input_need']}", parse_mode="HTML")
                 return
             bot.answer_callback_query(call.id, "✨ جاري التدقيق وإعادة الصياغة...")
             status = bot.send_message(chat_id, "✨ <b>جاري تدقيق النصوص لغوياً ونحوياً وإعادة صياغة الجمل الضعيفة...</b> ⏳", parse_mode="HTML")
