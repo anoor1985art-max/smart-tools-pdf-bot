@@ -2,6 +2,7 @@ import os
 import fitz  # PyMuPDF
 import requests
 import json
+import base64
 from gtts import gTTS
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -117,3 +118,55 @@ def ai_pdf_to_speech(summary_text, output_mp3_path):
     tts = gTTS(text=summary_text[:3000], lang="ar", slow=False)
     tts.save(output_mp3_path)
     return output_mp3_path
+
+def ai_image_ruler_and_area(image_path):
+    """📐 قياس الأطوال والمساحة وحساب الأبعاد من الصورة عبر الذكاء الاصطناعي (AI Vision Ruler)"""
+    key = get_gemini_key()
+    if not key:
+        return "⚠️ <b>تنبيه: محرك الذكاء الاصطناعي يحتاج إلى مفتاح Gemini API!</b>\n\n🔑 يرجى إدخال مفتاحك في البوت مباشرة عبر إرسال الأمر:\n`/set_gemini_key AIzaSy...`"
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
+    headers = {"Content-Type": "application/json"}
+    
+    try:
+        with open(image_path, "rb") as img_file:
+            img_data = base64.b64encode(img_file.read()).decode("utf-8")
+            
+        ext = image_path.split(".")[-1].lower()
+        mime_type = "image/png" if ext == "png" else "image/jpeg" if ext in ["jpg", "jpeg"] else "image/webp" if ext == "webp" else "image/jpeg"
+        
+        prompt = (
+            "أنت مهندس مساحة وخبير قياسات هندسية ومعمارية بالرؤية الحاسوبية (Computer Vision). "
+            "قم بدراسة وتحليل الصورة الملتقطة بدقة متناهية، وتحديد الأبعاد والأطوال التقريبية (بالمتر والسنتيمتر) للعناصر أو النقاط أو المسافات الظاهرة في المكان (مثل الأرضية، السجادة، الطاولة، الحائط، أو أي كائن ظاهر)، "
+            "مع حساب تقديري دقيق للمساحة (m² و cm²) والمحيط.\n"
+            "وضح في تقريرك الهندسي:\n"
+            "1. 📐 الأطوال والمسافات التقديرية بين النقاط أو حواف الغرفة/الكائن بـ (المتر والسنتيمتر).\n"
+            "2. 🔲 المساحة الإجمالية المقدرة (بالمتر المربع m² والسنتيمتر المربع cm²).\n"
+            "3. 🎯 المراجع القياسية التي اعتمدت عليها في القياس (مثل حجم البلاط القياسي 40x40 أو 60x60، عرض الباب 90 سم، أو بطاقة/ورقة A4 ظاهرة).\n"
+            "4. 💡 نصائح هندسية للوصول لأدق قياس في الطبيعة عند تحديد النقاط بكاميرا الهاتف."
+        )
+        
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": img_data
+                        }
+                    }
+                ]
+            }],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048}
+        }
+        
+        r = requests.post(url, headers=headers, json=payload, timeout=40)
+        if r.status_code == 200:
+            data = r.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        else:
+            return f"⚠️ تعذر التحليل برمز الخطأ ({r.status_code}): يرجى المحاولة مجدداً أو التأكد من وضوح الصورة."
+    except Exception as e:
+        print(f"[AI Vision Error]: {e}")
+        return f"❌ خطأ أثناء تحليل قياسات الصورة: {e}"

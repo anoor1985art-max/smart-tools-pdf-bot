@@ -3,3 +3,4 @@ storage_temp/
 __pycache__/
 *.pyc
 *.log
+gemini_key.json

@@ -7,7 +7,7 @@ import threading
 from dotenv import load_dotenv
 import telebot
 from telebot import types
-from flask import Flask, request
+from flask import Flask, request, render_template_string, send_from_directory
 
 load_dotenv()
 if hasattr(sys.stdout, 'reconfigure'):
@@ -96,8 +96,9 @@ def get_main_menu_markup():
     markup.add(types.InlineKeyboardButton("🔧 إصلاح ملف PDF تالف", callback_data="tool_repair"))
     markup.add(types.InlineKeyboardButton("⚖️ مقارنة نسختين وتحديد الفروقات", callback_data="tool_compare"))
     
-    # --- القسم 5: أدوات ومولد الباركود والـ QR الذكي ---
-    markup.add(types.InlineKeyboardButton("━━━ 🔳 أدوات ومولد الباركود والـ QR الذكي ━━━", callback_data="ignore"))
+    # --- القسم 5: أدوات ومولد الباركود والـ QR والقياس الذكي ---
+    markup.add(types.InlineKeyboardButton("━━━ 🔳 أدوات الـ QR والباركود والقياس الذكي ━━━", callback_data="ignore"))
+    markup.add(types.InlineKeyboardButton("📐 مسطرة وقياس المساحات عبر كاميرا الجوال (Smart AR Ruler)", callback_data="tool_ruler"))
     markup.add(types.InlineKeyboardButton("📲 إنشاء QR لنص أو رابط أو يوتيوب", callback_data="qr_text_url"))
     markup.add(types.InlineKeyboardButton("💬 إنشاء QR لواتساب أو اتصال مباشر", callback_data="qr_whatsapp"))
     markup.add(types.InlineKeyboardButton("📶 إنشاء QR لشبكة واي فاي (WiFi)", callback_data="qr_wifi"))
@@ -128,6 +129,7 @@ def get_smart_actions_for_image(img_path):
     """الأزرار السريعة عند إرسال صورة أو عدة صور"""
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
+        types.InlineKeyboardButton("📐 قياس الأطوال والمساحة هندسياً من الصورة (AI Vision Ruler)", callback_data="img_ai_ruler"),
         types.InlineKeyboardButton("🔍 قراءة وفك تشفير باركود/QR من الصورة", callback_data="qr_decode_img"),
         types.InlineKeyboardButton("🔳 تحويل الصورة إلى باركود QR دائم (QR Link)", callback_data="qr_convert_active_media"),
         types.InlineKeyboardButton("📑 تحويل الصورة/الصور إلى مستند PDF وثائقي", callback_data="img_to_pdf_single"),
@@ -195,6 +197,18 @@ if bot:
         ai_engine.set_local_gemini_key(parts[1])
         bot.reply_to(message, "✅ <b>تم حفظ وتفعيل مفتاح Gemini API بنجاح!</b> 🧠✨\n\n🎯 أصبحت الآن جميع أدوات الذكاء الاصطناعي في البوت جاهزة ومفعلة بنسبة 100%:\n• ⚖️ التدقيق القانوني وتحليل العقود والاتفاقيات\n• 💡 التلخيص الذكي الشامل الفوري\n• 🗣️ محاورة وسؤال المستند Q&A\n• ✨ التدقيق اللغوي وإعادة الصياغة\n• 🌐 الترجمة الفورية للمستندات", parse_mode="HTML")
 
+    @bot.message_handler(content_types=["web_app_data"])
+    def handle_web_app_data(message):
+        data_text = message.web_app_data.data
+        bot.send_message(
+            message.chat.id,
+            f"✅ <b>تم استلام تقرير القياس والمساحة من كاميرا الهاتف (Smart AR Ruler) بنجاح!</b> 📐✨\n━━━━━━━━━━━━━━━━━━\n\n"
+            f"<code>{data_text}</code>\n\n"
+            f"💡 <i>تم حفظ هذه القياسات بدقة في محادثتك، ويمكنك الرجوع إليها أو مشاركتها في أي وقت!</i>",
+            parse_mode="HTML",
+            reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu"))
+        )
+
     @bot.message_handler(content_types=["document", "photo", "audio", "voice", "video"])
     def handle_incoming_files(message):
         chat_id = message.chat.id
@@ -248,6 +262,12 @@ if bot:
             elif ext in ["jpg", "jpeg", "png", "webp"]:
                 if session.get("state") == "waiting_qr_media_file":
                     process_media_to_qr_flow(chat_id, local_path, status_msg)
+                    session["state"] = "idle"
+                elif session.get("state") == "waiting_ruler_photo":
+                    import pdf_ai_studio as ai_engine
+                    bot.edit_message_text("📐 <b>جاري فحص الصورة وحساب الأطوال والمساحة هندسياً عبر الذكاء الاصطناعي...</b> ⏳", chat_id=chat_id, message_id=status_msg.message_id, parse_mode="HTML")
+                    report = ai_engine.ai_image_ruler_and_area(local_path)
+                    bot.send_message(chat_id, f"📐 <b>تقرير الأطوال والمساحة الهندسي (AI Vision Ruler):</b>\n━━━━━━━━━━━━━━━━━━\n\n{report}", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
                     session["state"] = "idle"
                 elif session.get("state") == "waiting_qr_image_decode":
                     import qr_tools
@@ -410,6 +430,28 @@ if bot:
                 bot.edit_message_text(f"❌ خطأ أثناء إنشاء باركود الـ QR: {e}", chat_id=chat_id, message_id=status.message_id)
             return
 
+        elif data == "ruler_from_photo":
+            session["state"] = "waiting_ruler_photo"
+            bot.answer_callback_query(call.id, "📸 تم اختيار وضع القياس من صورة")
+            bot.send_message(
+                chat_id,
+                "📸 <b>قياس الأطوال والمساحة من صورة عبر الذكاء الاصطناعي (AI Vision Ruler):</b>\n\n"
+                "✏️ أرسل الآن صورة الغرفة، السطح، أو الشيء الذي تريد قياس أبعاده ومساحته (ويفضل وجود عنصر معروف مثل ورقة A4 أو بطاقة أو بلاطة بجانبه للمعايرة الدقيقة):",
+                parse_mode="HTML"
+            )
+            return
+
+        elif data == "img_ai_ruler":
+            if not session.get("active_file") or not os.path.exists(session["active_file"]):
+                bot.answer_callback_query(call.id, "❌ يرجى إرسال الصورة أولاً!")
+                return
+            bot.answer_callback_query(call.id, "📐 جاري حساب الأطوال والمساحة...")
+            status = bot.send_message(chat_id, "📐 <b>جاري فحص الصورة وحساب الأطوال والمساحة هندسياً عبر الذكاء الاصطناعي...</b> ⏳", parse_mode="HTML")
+            import pdf_ai_studio as ai_engine
+            report = ai_engine.ai_image_ruler_and_area(session["active_file"])
+            bot.edit_message_text(f"📐 <b>تقرير الأطوال والمساحة الهندسي (AI Vision Ruler):</b>\n━━━━━━━━━━━━━━━━━━\n\n{report}", chat_id=chat_id, message_id=status.message_id, parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")))
+            return
+
         elif data.startswith("tool_"):
             # إذا اختار أداة من القائمة الشاملة قبل إرسال الملف
             if not session.get("active_file") or not os.path.exists(session["active_file"]):
@@ -418,16 +460,36 @@ if bot:
                 info = tdesc.TOOL_DETAILS.get(data)
                 bot.answer_callback_query(call.id, f"✅ تم اختيار: {info['title'][:20] if info else data}...")
                 if info:
-                    bot.send_message(
-                        chat_id,
-                        f"🛠️ <b>{info['title']}</b>\n"
-                        f"━━━━━━━━━━━━━━━━━━\n\n"
-                        f"📖 <b>وظيفة الأداة وتفاصيلها:</b>\n"
-                        f"{info['desc']}\n\n"
-                        f"📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n"
-                        f"{info['input_need']}",
-                        parse_mode="HTML"
-                    )
+                    if data == "tool_ruler":
+                        render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://smart-tools-pdf-bot.onrender.com")
+                        ruler_markup = types.InlineKeyboardMarkup(row_width=1)
+                        ruler_markup.add(
+                            types.InlineKeyboardButton("📲 1. فتح كاميرا القياس مباشرة (Telegram WebApp)", web_app=types.WebAppInfo(url=f"{render_url}/ruler")),
+                            types.InlineKeyboardButton("🌐 2. فتح كاميرا القياس في متصفح الهاتف (سفاري/كروم)", url=f"{render_url}/ruler"),
+                            types.InlineKeyboardButton("📸 3. قياس أطوال ومساحة من صورة (AI Vision Ruler)", callback_data="ruler_from_photo"),
+                            types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")
+                        )
+                        bot.send_message(
+                            chat_id,
+                            f"🛠️ <b>{info['title']}</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━\n\n"
+                            f"📖 <b>وظيفة الأداة وتفاصيلها:</b>\n"
+                            f"{info['desc']}\n\n"
+                            f"📌 <b>اختر الآن طريقة القياس وتشغيل الكاميرا من الأزرار أدناه:</b>",
+                            parse_mode="HTML",
+                            reply_markup=ruler_markup
+                        )
+                    else:
+                        bot.send_message(
+                            chat_id,
+                            f"🛠️ <b>{info['title']}</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━\n\n"
+                            f"📖 <b>وظيفة الأداة وتفاصيلها:</b>\n"
+                            f"{info['desc']}\n\n"
+                            f"📌 <b>ما المطلوب منك الآن لإتمام العمل؟</b>\n"
+                            f"{info['input_need']}",
+                            parse_mode="HTML"
+                        )
                 else:
                     bot.send_message(
                         chat_id,
@@ -672,13 +734,324 @@ def run_polling():
             print(f"[ERROR] Restart polling due to: {e}")
             time.sleep(5)
 
+RULER_HTML = """<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📐 مسطرة وكاميرا قياس الأطوال والمساحة الذكية (Smart AR Ruler)</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #0b0f19; color: #ffffff; overflow: hidden; height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+        #camera-container { position: relative; flex: 1; width: 100%; overflow: hidden; background: #111; display: flex; align-items: center; justify-content: center; }
+        video { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: crosshair; }
+        
+        .header-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 20; background: rgba(11, 15, 25, 0.85); backdrop-filter: blur(10px); padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; gap: 8px; }
+        .title-row { display: flex; justify-content: space-between; align-items: center; }
+        .title-row h1 { font-size: 16px; color: #00f2fe; display: flex; align-items: center; gap: 6px; }
+        .points-badge { background: #1e293b; padding: 4px 10px; border-radius: 20px; font-size: 13px; font-weight: bold; border: 1px solid #38bdf8; color: #38bdf8; }
+        
+        .stats-box { background: rgba(30, 41, 59, 0.9); border: 1px solid rgba(0, 242, 254, 0.4); border-radius: 12px; padding: 10px 14px; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .stats-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .stats-row:last-child { margin-bottom: 0; }
+        .stat-val { color: #38bdf8; font-weight: bold; }
+        
+        .calibration-bar { position: absolute; bottom: 85px; left: 10px; right: 10px; z-index: 20; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15); border-radius: 14px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+        .cal-header { font-size: 12px; color: #94a3b8; display: flex; justify-content: space-between; }
+        .cal-buttons { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+        .cal-btn { background: #334155; border: none; color: white; padding: 6px 12px; border-radius: 8px; font-size: 12px; white-space: nowrap; cursor: pointer; transition: 0.2s; }
+        .cal-btn.active { background: #00f2fe; color: #0f172a; font-weight: bold; box-shadow: 0 0 10px rgba(0,242,254,0.5); }
+        .slider-row { display: flex; align-items: center; gap: 10px; }
+        .slider-row input[type=range] { flex: 1; accent-color: #00f2fe; }
+        
+        .bottom-actions { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 20; display: flex; gap: 10px; }
+        .action-btn { flex: 1; padding: 12px; border-radius: 12px; border: none; font-weight: bold; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+        .btn-reset { background: #ef4444; color: white; }
+        .btn-custom { background: #3b82f6; color: white; }
+        .btn-send { background: #10b981; color: white; }
+        .action-btn:active { transform: scale(0.97); }
+    </style>
+</head>
+<body>
+    <div id="camera-container">
+        <video id="cameraVideo" autoplay playsinline></video>
+        <canvas id="overlayCanvas"></canvas>
+        
+        <div class="header-bar">
+            <div class="title-row">
+                <h1>📐 مسطرة وكاميرا القياس الذكية</h1>
+                <span class="points-badge" id="pointsCount">النقاط: 0 / 4</span>
+            </div>
+            <div class="stats-box" id="statsBox">
+                <div class="stats-row"><span>ℹ️ الإرشاد:</span><span class="stat-val" id="guidanceText">اضغط على الشاشة لتحديد النقطة 1</span></div>
+                <div class="stats-row" id="lengthRow" style="display:none;"><span>📏 الطول والمسافة:</span><span class="stat-val" id="lengthVal">0 سم</span></div>
+                <div class="stats-row" id="areaRow" style="display:none;"><span>🔲 المساحة المقدرة:</span><span class="stat-val" id="areaVal">0 م²</span></div>
+            </div>
+        </div>
+
+        <div class="calibration-bar">
+            <div class="cal-header">
+                <span>🎯 وضع المعايرة (لضبط دقة القياس الحقيقي):</span>
+                <span id="scaleDisplay">30 بيكسل = 1 سم</span>
+            </div>
+            <div class="cal-buttons">
+                <button class="cal-btn active" onclick="setPreset('card', this)">💳 بطاقة (8.5 سم)</button>
+                <button class="cal-btn" onclick="setPreset('a4', this)">📄 ورقة A4 (21 سم)</button>
+                <button class="cal-btn" onclick="setPreset('tile40', this)">🔲 بلاطة (40 سم)</button>
+                <button class="cal-btn" onclick="setPreset('door90', this)">🚪 باب (90 سم)</button>
+            </div>
+            <div class="slider-row">
+                <span style="font-size:11px; color:#cbd5e1;">تعديل المقياس:</span>
+                <input type="range" id="scaleSlider" min="5" max="150" value="30" oninput="updateScaleFromSlider(this.value)">
+            </div>
+        </div>
+
+        <div class="bottom-actions">
+            <button class="action-btn btn-reset" onclick="resetPoints()">🔄 مسح النقاط</button>
+            <button class="action-btn btn-custom" onclick="calibrateManual()">✏️ إدخال طول معلوم</button>
+            <button class="action-btn btn-send" onclick="sendReportToBot()">📤 إرسال للبوت</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('cameraVideo');
+        const canvas = document.getElementById('overlayCanvas');
+        const ctx = canvas.getContext('2d');
+        let points = [];
+        let pixelsPerCm = 30.0;
+        
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                try {
+                    const streamFallback = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: "environment" }
+                    });
+                    video.srcObject = streamFallback;
+                } catch (e) {
+                    alert('⚠️ يرجى السماح للمتصفح أو التليجرام بالوصول لكاميرا الهاتف لعمل المسطرة الذكية.');
+                }
+            }
+        }
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        canvas.addEventListener('click', (e) => {
+            if (points.length >= 4) {
+                alert('⚠️ تم الوصول للحد الأقصى (4 نقاط). يمكنك مسح النقاط وحساب أبعاد جديدة أو تعديل المعايرة.');
+                return;
+            }
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            points.push({x, y});
+            updateStats();
+            draw();
+        });
+
+        function resetPoints() {
+            points = [];
+            updateStats();
+            draw();
+        }
+
+        function setPreset(type, btn) {
+            document.querySelectorAll('.cal-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (type === 'card') pixelsPerCm = 35.0;
+            else if (type === 'a4') pixelsPerCm = 25.0;
+            else if (type === 'tile40') pixelsPerCm = 15.0;
+            else if (type === 'door90') pixelsPerCm = 10.0;
+            document.getElementById('scaleSlider').value = pixelsPerCm;
+            document.getElementById('scaleDisplay').innerText = `${pixelsPerCm.toFixed(1)} بيكسل = 1 سم`;
+            updateStats();
+            draw();
+        }
+
+        function updateScaleFromSlider(val) {
+            pixelsPerCm = parseFloat(val);
+            document.getElementById('scaleDisplay').innerText = `${pixelsPerCm.toFixed(1)} بيكسل = 1 سم`;
+            updateStats();
+            draw();
+        }
+
+        function calibrateManual() {
+            if (points.length < 2) {
+                alert('⚠️ يرجى تحديد نقطتين (1 و 2) على جسم أو مسافة تعرف طولها الحقيقي أولاً قبل إدخال الطول المعلوم.');
+                return;
+            }
+            const distPx = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+            const knownCm = prompt('📏 أدخل الطول الحقيقي بين النقطة 1 والنقطة 2 بالسنتيمتر (مثلاً: 30 أو 100 أو 250):', '30');
+            if (knownCm && !isNaN(knownCm) && parseFloat(knownCm) > 0) {
+                pixelsPerCm = distPx / parseFloat(knownCm);
+                document.getElementById('scaleSlider').value = Math.min(150, Math.max(5, pixelsPerCm));
+                document.getElementById('scaleDisplay').innerText = `${pixelsPerCm.toFixed(1)} بيكسل = 1 سم`;
+                updateStats();
+                draw();
+                alert(`✅ تم ضبط المعايرة بنجاح! الآن أصبح الطول بين 1 و 2 بالضبط ${parseFloat(knownCm)} سم.`);
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('pointsCount').innerText = `النقاط: ${points.length} / 4`;
+            const gText = document.getElementById('guidanceText');
+            const lRow = document.getElementById('lengthRow');
+            const lVal = document.getElementById('lengthVal');
+            const aRow = document.getElementById('areaRow');
+            const aVal = document.getElementById('areaVal');
+
+            if (points.length === 0) {
+                gText.innerText = 'اضغط على الكاميرا لتحديد النقطة الأولى (1)';
+                lRow.style.display = 'none';
+                aRow.style.display = 'none';
+            } else if (points.length === 1) {
+                gText.innerText = 'اضغط لتحديد النقطة الثانية (2) وحساب الطول';
+                lRow.style.display = 'none';
+                aRow.style.display = 'none';
+            } else if (points.length === 2) {
+                gText.innerText = 'يمكنك تحديد نقطة ثالثة (3) لحساب المحيط والمساحة';
+                lRow.style.display = 'flex';
+                aRow.style.display = 'none';
+                const distPx = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+                const cm = distPx / pixelsPerCm;
+                const m = cm / 100.0;
+                lVal.innerText = `${m.toFixed(2)} متر (${cm.toFixed(1)} سم)`;
+            } else if (points.length === 3 || points.length === 4) {
+                gText.innerText = points.length === 3 ? 'مثلث متصل. اضغط نقطة 4 لحساب مضلع رباعي' : 'مضلع رباعي مكتمل (الحد الأقصى 4 نقاط)';
+                lRow.style.display = 'flex';
+                aRow.style.display = 'flex';
+                
+                let periPx = 0;
+                for (let i = 0; i < points.length; i++) {
+                    const next = (i + 1) % points.length;
+                    periPx += Math.hypot(points[next].x - points[i].x, points[next].y - points[i].y);
+                }
+                const periCm = periPx / pixelsPerCm;
+                const periM = periCm / 100.0;
+                lVal.innerText = `المحيط: ${periM.toFixed(2)} متر (${periCm.toFixed(1)} سم)`;
+
+                let areaPx2 = 0;
+                for (let i = 0; i < points.length; i++) {
+                    const next = (i + 1) % points.length;
+                    areaPx2 += (points[i].x * points[next].y - points[next].x * points[i].y);
+                }
+                areaPx2 = Math.abs(areaPx2) / 2.0;
+                const areaCm2 = areaPx2 / (pixelsPerCm * pixelsPerCm);
+                const areaM2 = areaCm2 / 10000.0;
+                aVal.innerText = `${areaM2.toFixed(3)} متر² (${areaCm2.toFixed(0)} سم²)`;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (points.length === 0) return;
+
+            if (points.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                if (points.length >= 3) {
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(0, 242, 254, 0.18)';
+                    ctx.fill();
+                }
+                ctx.strokeStyle = '#00f2fe';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                for (let i = 0; i < points.length; i++) {
+                    if (points.length === 2 && i === 1) break;
+                    const next = (i + 1) % points.length;
+                    if (points.length === 2 && i === 1) continue;
+                    const pA = points[i];
+                    const pB = points[next];
+                    const midX = (pA.x + pB.x) / 2;
+                    const midY = (pA.y + pB.y) / 2;
+                    const distPx = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+                    const cm = distPx / pixelsPerCm;
+                    const m = cm / 100.0;
+                    const label = cm >= 100 ? `${m.toFixed(2)}m` : `${cm.toFixed(1)}cm`;
+
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.lineWidth = 1;
+                    ctx.font = 'bold 13px Tahoma';
+                    const textWidth = ctx.measureText(label).width;
+                    ctx.fillRect(midX - textWidth/2 - 6, midY - 12, textWidth + 12, 22);
+                    ctx.strokeRect(midX - textWidth/2 - 6, midY - 12, textWidth + 12, 22);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(label, midX - textWidth/2, midY + 4);
+                    ctx.restore();
+                }
+            }
+
+            points.forEach((p, index) => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+                ctx.fillStyle = '#00f2fe';
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+
+                ctx.fillStyle = '#0f172a';
+                ctx.font = 'bold 14px Tahoma';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText((index + 1).toString(), p.x, p.y);
+            });
+        }
+
+        function sendReportToBot() {
+            if (points.length < 2) {
+                alert('⚠️ يرجى تحديد نقطتين على الأقل لحساب الطول والمسافة قبل الإرسال.');
+                return;
+            }
+            const lVal = document.getElementById('lengthVal').innerText;
+            const aVal = document.getElementById('areaVal').innerText;
+            const msg = `📐 تقرير قياس كاميرا الجوال (AR Ruler):\n• أطوال/محيط النقاط (${points.length}): ${lVal}\n` + (points.length >= 3 ? `• المساحة المحسوبة: ${aVal}\n` : '') + `• المقياس المعاير: ${pixelsPerCm.toFixed(1)} px/cm`;
+            
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+                window.Telegram.WebApp.sendData(msg);
+                window.Telegram.WebApp.close();
+            } else {
+                navigator.clipboard.writeText(msg);
+                alert('✅ تم نسخ نتيجة القياس بنجاح! يمكنك لصقها وإرسالها في محادثة التليجرام:\n\n' + msg);
+            }
+        }
+
+        window.onload = () => {
+            startCamera();
+            setTimeout(resizeCanvas, 300);
+        };
+    </script>
+</body>
+</html>"""
+
+@app.route("/ruler")
+def serve_ruler_webapp():
+    return render_template_string(RULER_HTML)
+
 @app.route("/")
 def index():
     return "🚀 Ultimate PDF Toolkit & AI Studio Bot is online 24/7!"
 
 @app.route("/media/<filename>")
 def serve_media(filename):
-    from flask import send_from_directory
     return send_from_directory(WORK_DIR, filename)
 
 if __name__ == "__main__":

@@ -180,6 +180,11 @@ TOOL_DETAILS = {
         "title": "🔍 قراءة وفك تشفير أي باركود أو رمز QR من صورة",
         "desc": "القارئ الماسح الضوئي الذكي للرموز؛ إذا كان لديك صورة تحتوي على باركود أو رمز QR مجهول، أرسل الصورة لهذه الأداة وستقوم بمسح الرمز وتحليله واستخراج كافة الروابط والنصوص والبيانات المخفية بداخله بدقة عالية.",
         "input_need": "📸 أرسل الآن صورة الـ QR أو الباركود الذي تريد فك تشفيره وقراءة محتواه."
+    },
+    "tool_ruler": {
+        "title": "📐 مسطرة وقياس المساحات والأطوال عبر كاميرا الجوال (Smart AR Ruler)",
+        "desc": "أداة هندسية ومساحية متطورة تفتح كاميرا جوالك لتحديد قياسات حقيقية للمسافات والمساحات في غرفتك أو مكتبك؛ بمجرد تحديد النقطة الأولى ثم النقطة الثانية يظهر لك الطول والمسافة بينهما فوراً بـ (المتر/سنتيمتر)، ويمكنك إضافة لغاية 4 نقاط ليقوم النظام تلقائياً بحساب المسافات وحساب المساحة الإجمالية (بالمتر المربع والسنتيمتر المربع) والمحيط بدقة مع خيارات معايرة ذكية!",
+        "input_need": "📲 اضغط على زر (تشغيل كاميرا القياس الذكية) الذي يظهر لك الآن لفتح الكاميرا والبدء بتحديد النقاط والقياس فوراً، أو اختر (قياس من صورة) لرفع صورة ليحللها الذكاء الاصطناعي هندسياً."
     }
 }
 
@@ -191,7 +196,7 @@ def get_tools_guide_markup():
         types.InlineKeyboardButton("🔄 2. دليل أدوات التحويل المتبادل والصور (6 أدوات)", callback_data="guide_sec_2"),
         types.InlineKeyboardButton("🤖 3. دليل الذكاء الاصطناعي والـ OCR (8 أدوات)", callback_data="guide_sec_3"),
         types.InlineKeyboardButton("🔐 4. دليل الحماية والتوقيع والإصلاح (6 أدوات)", callback_data="guide_sec_4"),
-        types.InlineKeyboardButton("🔳 5. دليل مولد وقارئ الـ QR والباركود (7 أدوات)", callback_data="guide_sec_5"),
+        types.InlineKeyboardButton("🔳 5. دليل الـ QR والباركود والقياس الذكي (8 أدوات)", callback_data="guide_sec_5"),
         types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية للبوت", callback_data="main_menu")
     )
     return markup
@@ -211,8 +216,8 @@ def get_category_guide_text(sec_id):
         tools_list = ["tool_protect", "tool_unlock", "tool_sign", "tool_watermark", "tool_repair", "tool_compare"]
         header = "🔐 <b>دليل وظائف وتفاصيل التشفير والحماية والتوقيع والإصلاح:</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     elif sec_id == "guide_sec_5":
-        tools_list = ["qr_text_url", "qr_whatsapp", "qr_wifi", "qr_vcard", "qr_custom_color", "qr_media_file", "qr_decode_action"]
-        header = "🔳 <b>دليل وظائف وتفاصيل أدوات ومولد الباركود والـ QR الذكي:</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        tools_list = ["tool_ruler", "qr_text_url", "qr_whatsapp", "qr_wifi", "qr_vcard", "qr_custom_color", "qr_media_file", "qr_decode_action"]
+        header = "🔳 <b>دليل وظائف وتفاصيل الـ QR والباركود ومسطرة القياس الذكي:</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     else:
         return "⚠️ قسم غير موجود في الدليل."
 
